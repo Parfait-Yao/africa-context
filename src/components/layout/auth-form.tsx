@@ -43,13 +43,18 @@ export function AuthForm({
   )
   const isLogin = mode === "login"
   const enabled: Record<Provider, boolean> = { github: githubEnabled, google: googleEnabled }
-  // En production, seuls les fournisseurs configurés apparaissent ; en dev, tous (avec un rappel de configuration)
-  const providers = PROVIDERS.filter((p) => enabled[p.id] || process.env.NODE_ENV !== "production")
+  // Les deux boutons sont toujours affichés ; un fournisseur non configuré affiche un message au clic
+  const providers = PROVIDERS
   const [oauthPending, setOauthPending] = React.useState<Provider | null>(null)
 
   function oauth(provider: (typeof PROVIDERS)[number]) {
     if (!enabled[provider.id]) {
-      toast.error(`Connexion ${provider.label} pas encore configurée`, { description: `Renseignez ${provider.envVar} et son secret dans .env.` })
+      toast.error(`Connexion ${provider.label} pas encore configurée`, {
+        description:
+          process.env.NODE_ENV === "production"
+            ? "Utilisez l'email et le mot de passe en attendant."
+            : `Renseignez ${provider.envVar} et son secret dans .env.`,
+      })
       return
     }
     setOauthPending(provider.id)

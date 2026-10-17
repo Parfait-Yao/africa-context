@@ -3,7 +3,12 @@ export const siteConfig = {
   tagline: "Des contextes vérifiés pour que votre IA intègre les services africains du premier coup.",
   description:
     "Bibliothèque communautaire de contextes IA vérifiés pour Wave, Orange Money, FedaPay, MTN MoMo, les API SMS et d'autres services africains. Installables en une commande dans Cursor, Claude Code ou tout assistant compatible.",
-  url: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  // Sur Vercel, VERCEL_PROJECT_PRODUCTION_URL (fourni automatiquement) sert de repli si NEXT_PUBLIC_APP_URL est absente
+  url:
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "http://localhost:3000"),
   cliPackage: "africontext",
   github: "https://github.com/",
   event: "CADEV 2026 · Systalink Challenge",
