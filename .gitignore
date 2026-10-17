@@ -56,3 +56,4 @@ packages/*/node_modules
 # Sauvegardes locales
 /backups/
 packages/*/dist/
+.neon
