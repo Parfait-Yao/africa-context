@@ -1,0 +1,352 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/schibsted-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * AfriContext design tokens
+ * Encre marine + blanc froid. Le dégradé bleu → cyan → violet est réservé
+ * au logo et à la barre de commande d'installation.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: #f7f9fc;
+  --foreground: #101935;
+  --card: #ffffff;
+  --card-foreground: #101935;
+  --popover: #ffffff;
+  --popover-foreground: #101935;
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf0fa;
+  --secondary-foreground: #101935;
+  --muted: #eef2f8;
+  --muted-foreground: #55607a;
+  --accent: #e7f1fd;
+  --accent-foreground: #102a6b;
+  --destructive: #dc2626;
+  --border: #dce3ee;
+  --input: #d3dbe8;
+  --ring: #1d4ed8;
+
+  --brand-blue: #1d4ed8;
+  --brand-cyan: #06b6d4;
+  --brand-violet: #7c3aed;
+  --success: #15803d;
+  --success-soft: #e8f6ee;
+  --danger-soft: #fdecec;
+  --warning: #b45309;
+  --warning-soft: #fdf3e3;
+  --code-bg: #0f1834;
+  --code-fg: #dfe6f5;
+
+  --chart-1: #1d4ed8;
+  --chart-2: #06b6d4;
+  --chart-3: #7c3aed;
+  --chart-4: #15803d;
+  --chart-5: #b45309;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #101935;
+  --sidebar-primary: #1d4ed8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eaf0fa;
+  --sidebar-accent-foreground: #101935;
+  --sidebar-border: #dce3ee;
+  --sidebar-ring: #1d4ed8;
+}
+
+.dark {
+  --background: #0a1128;
+  --foreground: #e8edf7;
+  --card: #101a3a;
+  --card-foreground: #e8edf7;
+  --popover: #101a3a;
+  --popover-foreground: #e8edf7;
+  --primary: #5b86ff;
+  --primary-foreground: #08102a;
+  --secondary: #17234b;
+  --secondary-foreground: #e8edf7;
+  --muted: #141f44;
+  --muted-foreground: #9aa6c4;
+  --accent: #172a5c;
+  --accent-foreground: #dbe5ff;
+  --destructive: #f05252;
+  --border: #22305a;
+  --input: #2a3966;
+  --ring: #5b86ff;
+
+  --brand-blue: #5b86ff;
+  --brand-cyan: #22d3ee;
+  --brand-violet: #a78bfa;
+  --success: #4ade80;
+  --success-soft: #0f2e22;
+  --danger-soft: #3a1420;
+  --warning: #fbbf24;
+  --warning-soft: #33260c;
+  --code-bg: #070d22;
+  --code-fg: #dfe6f5;
+
+  --chart-1: #5b86ff;
+  --chart-2: #22d3ee;
+  --chart-3: #a78bfa;
+  --chart-4: #4ade80;
+  --chart-5: #fbbf24;
+
+  --sidebar: #101a3a;
+  --sidebar-foreground: #e8edf7;
+  --sidebar-primary: #5b86ff;
+  --sidebar-primary-foreground: #08102a;
+  --sidebar-accent: #17234b;
+  --sidebar-accent-foreground: #e8edf7;
+  --sidebar-border: #22305a;
+  --sidebar-ring: #5b86ff;
+}
+
+@theme inline {
+  --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-violet: var(--brand-violet);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  code,
+  pre,
+  kbd {
+    @apply font-mono;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--brand-cyan) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Dégradé de marque : à n'utiliser que pour le logo et la barre d'installation. */
+  .bg-brand-gradient {
+    background-image: linear-gradient(
+      100deg,
+      var(--brand-blue) 0%,
+      var(--brand-cyan) 50%,
+      var(--brand-violet) 100%
+    );
+  }
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+}
+
+/* ---------- Mouvement ---------- */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(4%, -6%) scale(1.08);
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes slide-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@layer utilities {
+  /* Entrée au chargement ; --d règle le décalage de chaque élément. */
+  .rise-in {
+    animation: rise-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .animate-marquee {
+    animation: marquee 40s linear infinite;
+  }
+  .animate-drift {
+    animation: drift 14s ease-in-out infinite;
+  }
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  .mask-fade-x {
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+  }
+  .text-brand-gradient {
+    background-image: linear-gradient(100deg, var(--brand-blue), var(--brand-cyan) 55%, var(--brand-violet));
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* Apparition au scroll : pur CSS (scroll-driven animations), contenu visible si non supporté. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal,
+    .reveal-stagger > * {
+      animation: rise-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+    .reveal-stagger > *:nth-child(2) {
+      animation-range: entry 8% entry 63%;
+    }
+    .reveal-stagger > *:nth-child(3) {
+      animation-range: entry 16% entry 71%;
+    }
+    .reveal-stagger > *:nth-child(n + 4) {
+      animation-range: entry 24% entry 79%;
+    }
+  }
+}
+
+/* Transitions de page (React <ViewTransition>) */
+::view-transition-old(.page-exit) {
+  animation: vt-fade-out 160ms ease-in both;
+}
+::view-transition-new(.page-enter) {
+  animation: vt-fade-in 320ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Réserve la place de la barre de défilement : pas de décalage quand une modale bloque le scroll */
+  scrollbar-gutter: stable;
+}
+
+/* Pages sans défilement (connexion, inscription) : ni scroll ni gouttière réservée */
+html:has(.no-scroll) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+/* Animations décoratives en pause quand une modale est ouverte (évite les saccades sous le flou) */
+body:has([role="dialog"]) :is(.animate-drift, .animate-float, .animate-marquee) {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-marquee,
+  .animate-drift,
+  .animate-float {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

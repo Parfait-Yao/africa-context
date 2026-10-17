@@ -1,0 +1,8 @@
+# Fins de ligne Unix partout (scripts shell, crontab et Docker les exigent)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.woff2 binary

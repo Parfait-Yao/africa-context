@@ -1,0 +1,27 @@
+{
+  "name": "africontext",
+  "version": "0.1.0",
+  "description": "Installe un contexte AfriContext v\u00e9rifi\u00e9 dans votre projet (Cursor, Claude Code, AGENTS.md).",
+  "type": "module",
+  "bin": {
+    "africontext": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20"
+  }
+}

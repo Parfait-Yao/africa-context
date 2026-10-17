@@ -1,0 +1,12 @@
+# HTTPS automatique (Let's Encrypt) pour le domaine défini dans .env (DOMAIN=africontext.example.com)
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+	# La sandbox est publique pour la démo : https://<domaine>/sandbox/...
+	handle_path /sandbox/* {
+		reverse_proxy sandbox:4010
+	}
+	log {
+		output stdout
+	}
+}

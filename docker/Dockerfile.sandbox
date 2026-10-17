@@ -1,0 +1,10 @@
+# Sandbox isolée : faux serveurs Wave / Orange Money / FedaPay (aucune dépendance npm).
+FROM node:22-alpine
+WORKDIR /sandbox
+RUN addgroup -S sandbox && adduser -S sandbox -G sandbox
+COPY sandbox/ ./
+USER sandbox
+ENV PORT=4010
+EXPOSE 4010
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:4010/health || exit 1
+CMD ["node", "server.mjs"]

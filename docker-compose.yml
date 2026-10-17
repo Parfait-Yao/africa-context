@@ -1,0 +1,84 @@
+# Développement : `docker compose up -d db sandbox` puis `npm run dev`.
+# Production (VPS Systalink) : `docker compose --profile prod up -d --build`.
+name: africontext
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-africontext}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-africontext}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-africontext}"]
+      interval: 5s
+      retries: 10
+
+  sandbox:
+    build: { context: ., dockerfile: docker/Dockerfile.sandbox }
+    restart: unless-stopped
+    environment:
+      SANDBOX_PUBLIC_URL: ${SANDBOX_PUBLIC_URL:-http://localhost:4010}
+    ports:
+      - "127.0.0.1:4010:4010"
+    read_only: true
+    mem_limit: 256m
+    cpus: 0.5
+
+  # Migrations + données de démonstration, puis s'arrête.
+  migrate:
+    profiles: ["prod"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: build }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-africontext}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-africontext}?schema=public
+    command: sh -c "npx prisma migrate deploy && npx tsx prisma/seed.ts"
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    profiles: ["prod"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: runner }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-africontext}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-africontext}?schema=public
+      AUTH_TRUST_HOST: "true"
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    expose:
+      - "3000"
+
+  cron:
+    profiles: ["prod"]
+    build: { context: ., dockerfile: docker/Dockerfile.cron }
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    depends_on:
+      - app
+
+  caddy:
+    profiles: ["prod"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:

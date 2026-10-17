@@ -1,0 +1,239 @@
+// AfriContext — schéma de données (cahier des charges §8)
+// Prisma 7 : l'URL de connexion est lue dans prisma.config.ts (DATABASE_URL).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  user
+  admin
+}
+
+enum ContextType {
+  cursorrules
+  claude_prompt
+  mcp_server
+}
+
+enum ContextStatus {
+  pending
+  approved
+  rejected
+  to_recheck
+}
+
+enum EventKind {
+  view
+  copy
+  install
+}
+
+enum ReportStatus {
+  open
+  resolved
+  dismissed
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  passwordHash    String?   // vide si connexion GitHub ou Google
+  githubId        String?   @unique
+  googleId        String?   @unique
+  githubUrl       String?
+  image           String?
+  reputationScore Int       @default(0)
+  role            Role      @default(user)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  contexts       Context[]
+  votes          Vote[]
+  reports        Report[]
+  moderationLogs ModerationLog[]
+  accounts Account[]
+  sessions Session[]
+}
+
+model Context {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  description    String
+  type           ContextType
+  contentPayload String        @db.Text
+  service        String
+  category       String
+  countries      String[]      // codes ISO 3166-1 alpha-2
+  apiVersion     String
+  sourceUrl      String
+  sourceHash     String?       // empreinte de la doc source (veille F12)
+  sourceCheckedAt     DateTime?
+  sourceCheckFailures Int       @default(0)
+  testedWith     String[]
+  status          ContextStatus @default(pending)
+  rejectionReason String?
+  // Texte normalisé (minuscules, sans accents, noms de pays) pour la recherche
+  searchText      String        @default("")
+  lastVerifiedAt DateTime
+  hasSandbox     Boolean       @default(false)
+  authorId       String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  author   User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  versions ContextVersion[]
+  tags     ContextTag[]
+  votes    Vote[]
+  proofs   Proof[]
+  reports  Report[]
+  events   Event[]
+  moderationLogs ModerationLog[]
+
+  @@index([status])
+  @@index([service])
+  @@index([category])
+}
+
+model ContextVersion {
+  id             String   @id @default(cuid())
+  contextId      String
+  contentPayload String   @db.Text
+  note           String
+  createdAt      DateTime @default(now())
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@index([contextId, createdAt])
+}
+
+model Tag {
+  id       String       @id @default(cuid())
+  name     String       @unique
+  contexts ContextTag[]
+}
+
+model ContextTag {
+  contextId String
+  tagId     String
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contextId, tagId])
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  userId    String
+  contextId String
+  value     Int      // +1 ou -1
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  // Règle métier : un seul vote par utilisateur et par contexte
+  @@unique([userId, contextId])
+}
+
+model Proof {
+  id                   String   @id @default(cuid())
+  contextId            String
+  prompt               String   @db.Text
+  outputWithoutContext String   @db.Text
+  outputWithContext    String   @db.Text
+  model                String
+  sandboxResult        String?  // passed | failed
+  createdAt            DateTime @default(now())
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+}
+
+model Mock {
+  id              String @id @default(cuid())
+  service         String @unique
+  basePath        String
+  fixtures        Json
+  webhookExamples Json
+}
+
+model Report {
+  id        String       @id @default(cuid())
+  contextId String
+  userId    String
+  reason    String
+  details   String?
+  status     ReportStatus @default(open)
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model Event {
+  id        String    @id @default(cuid())
+  contextId String
+  kind      EventKind
+  // Empreinte anonyme du visiteur : une vue comptée par visiteur et par jour
+  visitorId String?
+  createdAt DateTime  @default(now())
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@index([contextId, kind])
+}
+
+model ModerationLog {
+  id         String        @id @default(cuid())
+  contextId  String
+  adminId    String
+  fromStatus ContextStatus
+  toStatus   ContextStatus
+  reason     String?
+  createdAt  DateTime      @default(now())
+
+  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  admin   User    @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([contextId, createdAt])
+}
+
+// --- Tables Auth.js (adapter Prisma) ---
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

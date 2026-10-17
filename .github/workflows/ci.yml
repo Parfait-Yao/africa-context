@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: africontext
+          POSTGRES_PASSWORD: change-me
+          POSTGRES_DB: africontext
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U africontext" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://africontext:change-me@localhost:5432/africontext?schema=public
+      TEST_DATABASE_URL: postgresql://africontext:change-me@localhost:5432/africontext_test?schema=public
+      AUTH_SECRET: ci-secret-0123456789abcdef0123456789abcdef
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      CRON_SECRET: ci-cron-secret
+      ALLOW_PRIVATE_FETCH: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Migrations (base de dev + base de test)
+        run: |
+          npx prisma migrate deploy
+          PGPASSWORD=change-me psql -h localhost -U africontext -d africontext -c "CREATE DATABASE africontext_test"
+          DATABASE_URL=$TEST_DATABASE_URL npx prisma migrate deploy
+      - run: npx tsx prisma/seed.ts
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Tests unitaires et d'intégration
+        run: npm test
+      - run: npm run build
+      - name: Démarrer l'application et la sandbox
+        run: |
+          npm start &
+          node sandbox/server.mjs &
+          npx wait-on -t 60000 http://localhost:3000/api/health http://localhost:4010/health
+      - name: Sandbox — le code « avec contexte » passe, le code « sans contexte » échoue
+        run: |
+          node sandbox/run.mjs sandbox/examples/wave-with-context.ts --scenario wave
+          node sandbox/run.mjs sandbox/examples/orange-with-context.ts --scenario orange
+          node sandbox/run.mjs sandbox/examples/fedapay-with-context.ts --scenario fedapay
+          ! node sandbox/run.mjs sandbox/examples/wave-without-context.ts --scenario wave
+      - run: npx playwright install --with-deps chromium
+      - name: Parcours E2E (desktop + mobile)
+        run: E2E_BASE_URL=http://localhost:3000 npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
