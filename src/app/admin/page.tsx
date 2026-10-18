@@ -2,153 +2,246 @@ import { Suspense } from "react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { connection } from "next/server"
-import { redirect } from "next/navigation"
-import { ExternalLinkIcon } from "lucide-react"
+import {
+  ArrowRightIcon, BadgeCheckIcon, CircleCheckIcon, ClockIcon, FlagIcon, InboxIcon, LibraryBigIcon,
+  RefreshCwIcon, ScrollTextIcon, TriangleAlertIcon, UsersIcon, ZapIcon, type LucideIcon,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { StatusBadge } from "@/components/contexts/status-badge"
-import { ModerationReview, type ReviewData } from "@/components/admin/moderation-review"
-import { ReportActions } from "@/components/admin/report-actions"
-import { contextService } from "@/modules/contexts/context.service"
-import { reportsService } from "@/modules/reports/reports.service"
-import { getSession } from "@/modules/auth/session"
-import { REQUIRED_SECTIONS, checkSections } from "@/modules/spec/spec.schema"
-import { scanForSecrets } from "@/modules/spec/secret-scanner"
-import { CONTEXT_TYPE_LABELS, STATUS_LABELS } from "@/config/site"
-import type { Context } from "@/modules/contexts/context.types"
-import { formatDate } from "@/lib/format"
+import { adminService, type AdminOverview } from "@/modules/admin/admin.service"
+import { requireAdminPage } from "@/modules/auth/session"
+import { STATUS_LABELS } from "@/config/site"
+import { formatDate, formatNumber } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
-export const metadata: Metadata = { title: "Modération" }
+export const metadata: Metadata = { title: "Tableau de bord" }
 
-export default function AdminPage() {
+export default function AdminDashboardPage() {
   return (
-    <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
-      <AdminContent />
-    </Suspense>
+    <>
+      <AdminPageHeader title="Tableau de bord" description="État du catalogue et de la modération, en temps réel.">
+        <Button asChild>
+          <Link href="/admin/moderation"><InboxIcon /> Traiter les contributions</Link>
+        </Button>
+      </AdminPageHeader>
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </>
   )
 }
 
-function toReview(c: Context): ReviewData {
-  const { present } = checkSections(c.content)
-  return {
-    slug: c.slug,
-    title: c.title,
-    status: c.status,
-    sourceUrl: c.sourceUrl,
-    author: c.author.name,
-    content: c.content,
-    sections: REQUIRED_SECTIONS.map((s) => ({ title: s.title, ok: present.includes(s.key) })),
-    secrets: scanForSecrets(c.content).map(({ label, excerpt, line }) => ({ label, excerpt, line })),
-  }
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Chargement du tableau de bord">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    </div>
+  )
 }
 
-/** Rendu à la requête : les statuts changent après chaque décision. */
-async function AdminContent() {
+async function DashboardContent() {
   await connection()
-  const user = await getSession()
-  if (user?.role !== "admin") redirect("/dashboard")
-
-  const [items, reports, log] = await Promise.all([
-    contextService.listForModeration(),
-    reportsService.listOpen(),
-    contextService.moderationLog(20),
-  ])
-  const pending = items.filter((c) => c.status === "pending")
-  const recheck = items.filter((c) => c.status === "to_recheck")
+  await requireAdminPage("/admin")
+  const data = await adminService.overview()
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Modération</h1>
-        <p className="mt-1 text-muted-foreground">Vérifiez chaque soumission sur sa documentation officielle avant de l'approuver.</p>
+      <StatsGrid data={data} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Alerts data={data} />
+        <QuickActions />
       </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <RecentSubmissions items={data.recentSubmissions} />
+        <RecentDecisions items={data.recentDecisions} />
+      </div>
+    </div>
+  )
+}
 
-      <Tabs defaultValue="pending">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-          <TabsTrigger value="pending">En attente <Badge variant="secondary">{pending.length}</Badge></TabsTrigger>
-          <TabsTrigger value="recheck">À revérifier <Badge variant="secondary">{recheck.length}</Badge></TabsTrigger>
-          <TabsTrigger value="reports">Signalements <Badge variant="secondary">{reports.length}</Badge></TabsTrigger>
-          <TabsTrigger value="log">Journal</TabsTrigger>
-        </TabsList>
+function Stat({ label, value, hint, Icon, href, tone }: { label: string; value: number; hint?: string; Icon: LucideIcon; href?: string; tone?: "warning" | "danger" }) {
+  const body = (
+    <Card className={cn("h-full gap-2 py-5 transition-colors", href && "hover:border-primary/40")}>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 px-5">
+        <CardDescription className="font-medium">{label}</CardDescription>
+        <Icon className={cn("size-4 text-muted-foreground", tone === "warning" && "text-warning", tone === "danger" && "text-destructive")} aria-hidden="true" />
+      </CardHeader>
+      <CardContent className="px-5">
+        <p className="text-3xl font-bold tracking-tight tabular-nums">{formatNumber(value)}</p>
+        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      </CardContent>
+    </Card>
+  )
+  return href ? (
+    <Link href={href} className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</Link>
+  ) : (
+    body
+  )
+}
 
-        {[{ value: "pending", rows: pending }, { value: "recheck", rows: recheck }].map(({ value, rows }) => (
-          <TabsContent key={value} value={value} className="mt-4">
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-5">Contexte</TableHead>
-                    <TableHead className="hidden md:table-cell">Auteur</TableHead>
-                    <TableHead className="hidden md:table-cell">Soumis le</TableHead>
-                    <TableHead className="pr-5 text-right">Décision</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.length === 0 && (
-                    <TableRow><TableCell colSpan={4} className="py-10 text-center text-muted-foreground">Rien à traiter pour l'instant.</TableCell></TableRow>
-                  )}
-                  {rows.map((c) => (
-                    <TableRow key={c.slug}>
-                      <TableCell className="max-w-[16rem] pl-5 whitespace-normal">
-                        <p className="font-medium">{c.title}</p>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span className="font-mono">{CONTEXT_TYPE_LABELS[c.type]}</span>
-                          <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                            Source <ExternalLinkIcon className="size-3" />
-                          </a>
-                        </p>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">{c.author.name}</TableCell>
-                      <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(c.createdAt)}</TableCell>
-                      <TableCell className="pr-5 text-right"><ModerationReview data={toReview(c)} /></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-        ))}
+function StatsGrid({ data }: { data: AdminOverview }) {
+  const { contexts, impact } = data
+  return (
+    <section aria-labelledby="stats-title">
+      <h2 id="stats-title" className="sr-only">Statistiques</h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Contextes vérifiés" value={contexts.approved} hint={`${formatNumber(contexts.total)} au total, ${formatNumber(contexts.rejected)} rejetés`} Icon={BadgeCheckIcon} />
+        <Stat label="En attente" value={contexts.pending} hint="Soumissions à relire" Icon={ClockIcon} href="/admin/moderation" tone={contexts.pending ? "warning" : undefined} />
+        <Stat label="À revérifier" value={contexts.toRecheck} hint="Source modifiée ou signalée" Icon={RefreshCwIcon} href="/admin/moderation" tone={contexts.toRecheck ? "warning" : undefined} />
+        <Stat label="Signalements ouverts" value={data.openReports} Icon={FlagIcon} href="/admin/reports" tone={data.openReports ? "danger" : undefined} />
+        <Stat label="Utilisateurs" value={data.users} hint={`dont ${formatNumber(data.admins)} administrateur${data.admins > 1 ? "s" : ""}`} Icon={UsersIcon} />
+        <Stat label="Services couverts" value={impact.services} hint={`${formatNumber(impact.countries)} pays`} Icon={LibraryBigIcon} />
+        <Stat label="Copies" value={impact.copies} hint="Contextes copiés depuis le site" Icon={ZapIcon} />
+        <Stat label="Installations" value={impact.installs} hint={`≈ ${formatNumber(impact.hoursSaved)} h gagnées (estimation : ${impact.minutesPerUse} min / usage)`} Icon={ZapIcon} />
+      </div>
+    </section>
+  )
+}
 
-        <TabsContent value="reports" className="mt-4">
-          {reports.length === 0 ? (
-            <p className="rounded-xl border bg-card p-8 text-center text-muted-foreground">Aucun signalement ouvert.</p>
-          ) : (
-            <ul className="divide-y rounded-xl border bg-card">
-              {reports.map((r) => (
-                <li key={r.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/contexts/${r.context.slug}`} className="font-medium hover:underline">{r.context.title}</Link>
-                      <StatusBadge status={r.context.status} />
-                    </div>
-                    <p className="mt-1 text-sm"><span className="font-medium">{r.reason}</span>{r.details ? ` — ${r.details}` : ""}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Signalé par {r.user.name}, le {formatDate(r.createdAt.toISOString())}</p>
-                  </div>
-                  <ReportActions id={r.id} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </TabsContent>
+function Alerts({ data }: { data: AdminOverview }) {
+  const alerts = [
+    data.contexts.pending > 0 && { href: "/admin/moderation", text: `${data.contexts.pending} contribution${data.contexts.pending > 1 ? "s" : ""} en attente de relecture` },
+    data.contexts.toRecheck > 0 && { href: "/admin/moderation", text: `${data.contexts.toRecheck} contexte${data.contexts.toRecheck > 1 ? "s" : ""} à revérifier` },
+    data.openReports > 0 && { href: "/admin/reports", text: `${data.openReports} signalement${data.openReports > 1 ? "s" : ""} ouvert${data.openReports > 1 ? "s" : ""}` },
+    data.unreachableSources > 0 && { href: "/admin/sources?state=unreachable", text: `${data.unreachableSources} contexte${data.unreachableSources > 1 ? "s" : ""} publié${data.unreachableSources > 1 ? "s" : ""} dont la documentation source est injoignable` },
+    data.openAlerts.total > 0 && {
+      href: "/admin/security",
+      text: `${data.openAlerts.total} alerte${data.openAlerts.total > 1 ? "s" : ""} de sécurité active${data.openAlerts.total > 1 ? "s" : ""}${data.openAlerts.high ? `, dont ${data.openAlerts.high} de gravité élevée` : ""}`,
+    },
+  ].filter((a): a is { href: string; text: string } => Boolean(a))
 
-        <TabsContent value="log" className="mt-4">
-          <ul className="divide-y rounded-xl border bg-card text-sm">
-            {log.length === 0 && <li className="p-6 text-center text-muted-foreground">Aucune décision pour l'instant.</li>}
-            {log.map((l) => (
-              <li key={l.id} className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-3">
-                <span>
-                  <span className="font-medium">{l.admin.name}</span> : {STATUS_LABELS[l.fromStatus]} → <span className="font-medium">{STATUS_LABELS[l.toStatus]}</span> ·{" "}
-                  <Link href={`/contexts/${l.context.slug}`} className="hover:underline">{l.context.title}</Link>
-                  {l.reason && <span className="text-muted-foreground"> — {l.reason}</span>}
-                </span>
-                <time className="text-xs text-muted-foreground" dateTime={l.createdAt.toISOString()}>{formatDate(l.createdAt.toISOString())}</time>
+  return (
+    <Card className="gap-3 py-5">
+      <CardHeader className="px-5">
+        <CardTitle className="text-base">Alertes</CardTitle>
+      </CardHeader>
+      <CardContent className="px-5">
+        {alerts.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CircleCheckIcon className="size-4 text-success" aria-hidden="true" /> Rien à signaler : modération, signalements et sécurité sont à jour.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {alerts.map((a) => (
+              <li key={a.text}>
+                {a.href ? (
+                  <Link href={a.href} className="group flex items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm hover:underline">
+                    <TriangleAlertIcon className="size-4 shrink-0 text-warning" aria-hidden="true" />
+                    <span className="flex-1">{a.text}</span>
+                    <ArrowRightIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" aria-hidden="true" />
+                  </Link>
+                ) : (
+                  <p className="flex items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm">
+                    <TriangleAlertIcon className="size-4 shrink-0 text-warning" aria-hidden="true" />
+                    {a.text}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
-        </TabsContent>
-      </Tabs>
-    </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function QuickActions() {
+  const actions = [
+    { href: "/admin/moderation", label: "Relire les contributions", Icon: InboxIcon },
+    { href: "/admin/reports", label: "Traiter les signalements", Icon: FlagIcon },
+    { href: "/contexts", label: "Voir le catalogue public", Icon: LibraryBigIcon },
+    { href: "/admin/audit", label: "Consulter le journal", Icon: ScrollTextIcon },
+  ]
+  return (
+    <Card className="gap-3 py-5">
+      <CardHeader className="px-5">
+        <CardTitle className="text-base">Actions rapides</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-1 px-3">
+        {actions.map(({ href, label, Icon }) => (
+          <Button key={href} asChild variant="ghost" className="justify-start">
+            <Link href={href}><Icon /> {label}</Link>
+          </Button>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function EmptyBlock({ title, description, Icon }: { title: string; description: string; Icon: LucideIcon }) {
+  return (
+    <Empty className="border-0 p-6">
+      <EmptyHeader>
+        <EmptyMedia variant="icon"><Icon /></EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+}
+
+function RecentSubmissions({ items }: { items: AdminOverview["recentSubmissions"] }) {
+  return (
+    <Card className="gap-3 py-5">
+      <CardHeader className="px-5">
+        <CardTitle className="text-base">Dernières soumissions</CardTitle>
+      </CardHeader>
+      <CardContent className="px-0">
+        {items.length === 0 ? (
+          <EmptyBlock title="Aucune soumission" description="Les contextes proposés par la communauté apparaîtront ici." Icon={InboxIcon} />
+        ) : (
+          <ul className="divide-y text-sm">
+            {items.map((c) => (
+              <li key={c.slug} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{c.title}</span>
+                  <span className="text-xs text-muted-foreground">{c.author.name} · {formatDate(c.createdAt.toISOString())}</span>
+                </span>
+                <StatusBadge status={c.status} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function RecentDecisions({ items }: { items: AdminOverview["recentDecisions"] }) {
+  return (
+    <Card className="gap-3 py-5">
+      <CardHeader className="flex flex-row items-center justify-between px-5">
+        <CardTitle className="text-base">Dernières décisions</CardTitle>
+        {items.length > 0 && (
+          <Link href="/admin/audit" className="text-sm text-primary hover:underline">Tout voir</Link>
+        )}
+      </CardHeader>
+      <CardContent className="px-0">
+        {items.length === 0 ? (
+          <EmptyBlock title="Aucune décision" description="Les approbations et rejets seront journalisés ici." Icon={ScrollTextIcon} />
+        ) : (
+          <ul className="divide-y text-sm">
+            {items.map((l) => (
+              <li key={l.id} className="px-5 py-2.5">
+                <p className="truncate">
+                  <span className="font-medium">{l.context.title}</span> → {STATUS_LABELS[l.toStatus]}
+                </p>
+                <p className="text-xs text-muted-foreground">{l.admin.name} · {formatDate(l.createdAt.toISOString())}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }

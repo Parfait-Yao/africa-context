@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { HttpError as BusinessError } from "@/lib/errors"
 import { PUBLIC_STATUSES } from "@/modules/contexts/context.repository"
+import { SETTINGS, settingsService } from "@/modules/settings/settings.service"
 
 export const REPORT_REASONS = ["obsolete", "incorrect", "dangerous", "secret", "other"] as const
 export const reportSchema = z.object({
@@ -10,8 +11,11 @@ export const reportSchema = z.object({
   details: z.string().trim().max(1000).optional(),
 })
 
-/** Au-delà de ce nombre de signalements ouverts, le contexte passe automatiquement « à revérifier ». */
-export const AUTO_RECHECK_THRESHOLD = 3
+/**
+ * Valeur par défaut du nombre de signalements ouverts au-delà duquel le contexte passe « à revérifier ».
+ * La valeur effective est un paramètre de la plateforme (reports.autoRecheckThreshold).
+ */
+export const AUTO_RECHECK_THRESHOLD = SETTINGS["reports.autoRecheckThreshold"].default
 
 export const reportsService = {
   async create(slug: string, userId: string, input: unknown) {
@@ -28,7 +32,7 @@ export const reportsService = {
     })
     const open = await prisma.report.count({ where: { contextId: ctx.id, status: "open" } })
     let autoRecheck = false
-    if (open >= AUTO_RECHECK_THRESHOLD && ctx.status === "approved") {
+    if (open >= (await settingsService.get("reports.autoRecheckThreshold")) && ctx.status === "approved") {
       await prisma.context.update({ where: { id: ctx.id }, data: { status: "to_recheck" } })
       autoRecheck = true
     }
@@ -42,16 +46,61 @@ export const reportsService = {
       include: { context: { select: { slug: true, title: true, status: true } }, user: { select: { name: true } } },
     }),
 
-  async resolve(id: string, action: "recheck" | "dismiss") {
+  /** Liste admin : filtres par statut et motif, avec la trace de décision. */
+  async listAdmin(f: { status?: "open" | "resolved" | "dismissed"; reason?: string; page: number }, pageSize = 20) {
+    const where = { ...(f.status && { status: f.status }), ...(f.reason && { reason: f.reason }) }
+    const [total, items] = await Promise.all([
+      prisma.report.count({ where }),
+      prisma.report.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (f.page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          context: { select: { slug: true, title: true, status: true } },
+          user: { select: { id: true, name: true } },
+          resolvedBy: { select: { name: true } },
+        },
+      }),
+    ])
+    return { items, total, page: f.page, pageCount: Math.max(1, Math.ceil(total / pageSize)) }
+  },
+
+  /**
+   * Décision sur un signalement ouvert (admin). Le statut du signalement et celui du contexte restent distincts :
+   * - `dismiss` : classé sans suite, contexte inchangé ;
+   * - `resolve` : signalement traité, contexte inchangé (ex. corrigé entre-temps) ;
+   * - `recheck` : signalement traité ET contexte publié passé « à revérifier » (journalisé).
+   */
+  async resolve(id: string, action: "recheck" | "resolve" | "dismiss", admin: { id: string }, note?: string) {
     const report = await prisma.report.findUnique({ where: { id }, include: { context: { select: { id: true, status: true } } } })
     if (!report) throw new BusinessError(404, "Signalement introuvable.")
-    await prisma.report.update({
-      where: { id },
-      data: { status: action === "dismiss" ? "dismissed" : "resolved", resolvedAt: new Date() },
+    if (report.status !== "open") throw new BusinessError(409, "Ce signalement a déjà été traité.")
+
+    const status = action === "dismiss" ? "dismissed" : "resolved"
+    const resolutionNote = note?.trim() || null
+    const markRecheck = action === "recheck" && report.context.status === "approved"
+
+    await prisma.$transaction(async (tx) => {
+      // Condition sur status "open" : deux admins qui traitent en même temps ne produisent qu'une décision
+      const { count } = await tx.report.updateMany({
+        where: { id, status: "open" },
+        data: { status, resolvedAt: new Date(), resolvedById: admin.id, resolutionNote },
+      })
+      if (count === 0) throw new BusinessError(409, "Ce signalement a déjà été traité.")
+      if (!markRecheck) return
+      const moved = await tx.context.updateMany({ where: { id: report.context.id, status: "approved" }, data: { status: "to_recheck" } })
+      if (moved.count === 0) return
+      await tx.moderationLog.create({
+        data: {
+          contextId: report.context.id,
+          adminId: admin.id,
+          fromStatus: "approved",
+          toStatus: "to_recheck",
+          reason: `Signalement (${report.reason})${resolutionNote ? ` : ${resolutionNote}` : ""}`,
+        },
+      })
     })
-    if (action === "recheck" && report.context.status === "approved") {
-      await prisma.context.update({ where: { id: report.context.id }, data: { status: "to_recheck" } })
-    }
-    return { id, status: action === "dismiss" ? "dismissed" : "resolved" }
+    return { id, status, contextStatus: markRecheck ? "to_recheck" : report.context.status }
   },
 }

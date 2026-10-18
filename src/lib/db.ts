@@ -19,6 +19,18 @@ function createClient() {
   return new PrismaClient({ adapter: new PrismaPg(pool) })
 }
 
-export const prisma = globalForPrisma.prisma ?? createClient()
+/**
+ * Après `prisma generate`, le rechargement à chaud charge une nouvelle classe PrismaClient : l'instance
+ * mise en cache, créée avec l'ancien schéma, ignorerait les nouveaux modèles. On la remplace alors.
+ */
+function cachedClient() {
+  const cached = globalForPrisma.prisma
+  if (cached && cached instanceof PrismaClient) return cached
+  // Ancienne instance : on libère son pool de connexions
+  if (cached) void (cached as { $disconnect(): Promise<void> }).$disconnect().catch(() => {})
+  return createClient()
+}
+
+export const prisma = cachedClient()
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma

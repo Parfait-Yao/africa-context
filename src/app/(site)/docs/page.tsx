@@ -43,15 +43,22 @@ export default function DocsPage() {
 
         <section id="cli" className="scroll-mt-24 space-y-4">
           <h2 className="text-2xl font-semibold tracking-tight">La CLI</h2>
-          <p className="text-muted-foreground">À lancer à la racine du projet. Sans option, le contexte devient une règle Cursor.</p>
-          <InstallCommand slug="wave-checkout-api" showFormats />
-          <Code>{`npx africontext add wave-checkout-api --format claude   # ajoute au CLAUDE.md
-npx africontext add wave-checkout-api --format agents   # ajoute à AGENTS.md
-npx africontext add wave-checkout-api --dry-run         # affiche sans écrire
-npx africontext search "orange money"                   # cherche dans le catalogue`}</Code>
+          <p className="text-muted-foreground">
+            Une seule commande, à la racine du projet, installe tout ce dont votre agent a besoin : ses règles (endpoints, authentification,
+            webhooks, pièges, exemple) complétées par les consignes propres à votre framework, les variables d'environnement à remplir
+            et la protection de votre <code className="font-mono">.env</code>. Pas de prompt à copier, pas de fichier à exporter.
+          </p>
+          <InstallCommand slug="wave-checkout-api" showFormats envVars={["WAVE_API_KEY", "WAVE_WEBHOOK_SECRET", "APP_URL"]} />
+          <Code>{`npx africontext add orange-money-webpay --env claude    # Claude Code
+npx africontext add orange-money-webpay                 # outil détecté (ou proposé) automatiquement
+npx africontext add orange-money-webpay --dry-run       # affiche ce qui serait fait, sans écrire
+npx africontext search "orange money"                   # cherche dans le catalogue
+npx africontext list                                    # contextes installés dans le projet`}</Code>
           <p className="text-sm text-muted-foreground">
-            Si le fichier cible existe déjà, la CLI ajoute un bloc délimité <code className="font-mono">{"<!-- africontext:slug -->"}</code> ou demande
-            confirmation ; elle ne l'écrase jamais en silence.
+            Environnements : <code className="font-mono">cursor</code>, <code className="font-mono">claude</code>, <code className="font-mono">windsurf</code>,{" "}
+            <code className="font-mono">copilot</code>, <code className="font-mono">agents</code> (AGENTS.md : Codex, Gemini CLI…). Frameworks reconnus : Next.js,
+            Nuxt, SvelteKit, Remix, NestJS, Express, Fastify, Vite, Node.js, Python. Les variables sont ajoutées vides : aucune clé n'est jamais écrite.
+            Relancer la commande met les règles à jour ; un fichier qui n'a pas été créé par AfriContext n'est jamais remplacé sans votre accord.
           </p>
         </section>
 

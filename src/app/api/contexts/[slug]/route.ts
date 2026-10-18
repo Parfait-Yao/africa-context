@@ -31,3 +31,14 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/contexts/[slug]"
     return handleError(err)
   }
 }
+
+/** DELETE /api/contexts/:slug — suppression définitive par l'auteur ou un admin. */
+export async function DELETE(_req: Request, ctx: RouteContext<"/api/contexts/[slug]">) {
+  try {
+    const user = await requireUser()
+    const { slug } = await ctx.params
+    return ok(await contextService.remove(slug, user))
+  } catch (err) {
+    return handleError(err)
+  }
+}

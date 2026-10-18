@@ -49,7 +49,7 @@ test("un callbackUrl externe est ignoré après connexion", async ({ page }) => 
   await page.goto(`/login?callbackUrl=${encodeURIComponent("/\\evil.example")}`)
   await page.getByLabel("Email").fill("dev@africontext.dev")
   await page.getByLabel("Mot de passe").fill("Dev-AfriContext-2026")
-  await page.getByRole("button", { name: "Se connecter" }).click()
+  await page.getByRole("button", { name: "Se connecter", exact: true }).click()
   await expect(page).toHaveURL(/\/dashboard/)
 })
 

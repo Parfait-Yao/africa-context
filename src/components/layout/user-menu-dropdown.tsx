@@ -28,7 +28,7 @@ export function UserMenuDropdown({ name, email, isAdmin }: { name: string; email
         </DropdownMenuItem>
         {isAdmin && (
           <DropdownMenuItem asChild>
-            <Link href="/admin"><ShieldCheckIcon /> Modération</Link>
+            <Link href="/admin"><ShieldCheckIcon /> Administration</Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

@@ -55,6 +55,20 @@ export const STATUS_LABELS = {
   to_recheck: "À revérifier",
 } as const
 
+export const REPORT_REASON_LABELS: Record<string, string> = {
+  obsolete: "Obsolète",
+  incorrect: "Incorrect",
+  dangerous: "Dangereux",
+  secret: "Contient un secret",
+  other: "Autre",
+}
+
+export const REPORT_STATUS_LABELS = {
+  open: "Ouvert",
+  resolved: "Traité",
+  dismissed: "Classé sans suite",
+} as const
+
 export const TOOL_LABELS = {
   cursor: "Cursor",
   "claude-code": "Claude Code",

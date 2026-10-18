@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/contexts/status-badge"
+import { DeleteContextButton } from "@/components/submit/delete-context-button"
 import { contextService } from "@/modules/contexts/context.service"
 import { usersService } from "@/modules/users/users.service"
 import { getSession } from "@/modules/auth/session"
@@ -43,7 +44,11 @@ async function DashboardContent() {
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Mes contributions</h1>
           <p className="mt-1 text-muted-foreground">Bonjour {user.name || user.email}. Suivez la validation et l'usage de vos contextes.</p>
         </div>
-        <Button asChild><Link href="/submit"><PlusIcon /> Publier un contexte</Link></Button>
+        {user.role === "admin" ? (
+          <Button asChild variant="outline"><Link href="/admin">Espace administrateur</Link></Button>
+        ) : (
+          <Button asChild><Link href="/submit"><PlusIcon /> Publier un contexte</Link></Button>
+        )}
       </div>
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
@@ -64,7 +69,11 @@ async function DashboardContent() {
         <div className="rounded-xl border border-dashed p-10 text-center">
           <p className="font-medium">Vous n'avez encore publié aucun contexte.</p>
           <p className="mt-1 text-sm text-muted-foreground">Partagez une intégration que vous maîtrisez : Wave, Orange Money, une API SMS…</p>
-          <Button asChild className="mt-4"><Link href="/submit">Publier mon premier contexte</Link></Button>
+          {user.role === "admin" ? (
+            <p className="mt-4 text-sm text-muted-foreground">Compte administrateur : vous vérifiez et validez les contextes, vous n'en publiez pas.</p>
+          ) : (
+            <Button asChild className="mt-4"><Link href="/submit">Publier mon premier contexte</Link></Button>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border bg-card">
@@ -96,11 +105,14 @@ async function DashboardContent() {
                   <TableCell className="hidden text-muted-foreground sm:table-cell">{formatDate(c.createdAt)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatNumber(c.stats.installs)}</TableCell>
                   <TableCell className="pr-5 text-right">
-                    <Button asChild size="sm" variant={c.status === "rejected" ? "default" : "ghost"}>
-                      <Link href={`/submit?edit=${c.slug}`}>
-                        <PencilIcon /> {c.status === "rejected" ? "Corriger et resoumettre" : "Modifier"}
-                      </Link>
-                    </Button>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Button asChild size="sm" variant={c.status === "rejected" ? "default" : "ghost"}>
+                        <Link href={`/submit?edit=${c.slug}`}>
+                          <PencilIcon /> {c.status === "rejected" ? "Corriger et resoumettre" : "Modifier"}
+                        </Link>
+                      </Button>
+                      <DeleteContextButton slug={c.slug} title={c.title} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

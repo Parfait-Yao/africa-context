@@ -11,9 +11,11 @@ export async function UserMenu() {
   if (!user) return <GuestActions />
   return (
     <>
-      <Button asChild className="hidden sm:inline-flex">
-        <Link href="/submit">Publier un contexte</Link>
-      </Button>
+      {user.role !== "admin" && (
+        <Button asChild className="hidden sm:inline-flex">
+          <Link href="/submit">Publier un contexte</Link>
+        </Button>
+      )}
       <UserMenuDropdown name={user.name || user.email} email={user.email} isAdmin={user.role === "admin"} />
     </>
   )

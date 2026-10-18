@@ -45,15 +45,22 @@ const config: NextAuthConfig = {
         // Anti force brute : 10 tentatives par email et par quart d'heure
         if (!rateLimit(`login:${parsed.data.email.toLowerCase()}`, 10, 15 * 60_000).ok) return null
         const user = await usersService.verifyCredentials(parsed.data.email, parsed.data.password)
-        if (!user) return null
+        if (!user || user.suspendedAt) return null
         return { id: user.id, name: user.name, email: user.email, role: user.role }
       },
     }),
   ],
   callbacks: {
-    /** Google : refuse un email non vérifié (sinon on pourrait se rattacher au compte d'un autre). */
-    signIn({ account, profile }) {
-      if (account?.provider === "google") return (profile as { email_verified?: boolean } | undefined)?.email_verified === true
+    /**
+     * Google : refuse un email non vérifié (sinon on pourrait se rattacher au compte d'un autre).
+     * OAuth : refuse un compte déjà relié qui a été suspendu par un administrateur.
+     */
+    async signIn({ account, profile }) {
+      if (account?.provider === "google" && (profile as { email_verified?: boolean } | undefined)?.email_verified !== true) return false
+      if (account?.provider === "github" || account?.provider === "google") {
+        const email = (profile as { email?: string | null } | undefined)?.email
+        if (await usersService.isSuspendedOAuth(account.provider, account.providerAccountId, email)) return false
+      }
       return true
     },
     async jwt({ token, user, account, profile }) {

@@ -2,6 +2,9 @@ import { Suspense } from "react"
 import type { Metadata } from "next"
 import { connection } from "next/server"
 import { notFound, redirect } from "next/navigation"
+import Link from "next/link"
+import { ShieldCheckIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SubmitForm } from "@/components/submit/submit-form"
 import { contextService } from "@/modules/contexts/context.service"
@@ -27,6 +30,23 @@ async function SubmitContent({ searchParams }: Pick<PageProps<"/submit">, "searc
   await connection()
   const user = await getSession()
   if (!user) redirect("/login?callbackUrl=/submit")
+  // Séparation des rôles : l'API refuse aussi la soumission et la correction par un administrateur
+  if (user.role === "admin") {
+    return (
+      <div className="max-w-2xl rounded-xl border bg-card p-8">
+        <ShieldCheckIcon className="size-8 text-primary" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">Les administrateurs ne publient pas de contextes</h1>
+        <p className="mt-2 text-muted-foreground">
+          Votre rôle est de contrôler, vérifier et valider les contributions de la communauté. Pour qu&apos;un contexte soit corrigé,
+          rejetez-le avec un motif précis : son auteur le modifiera et le resoumettra.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button asChild><Link href="/admin/moderation">File de modération</Link></Button>
+          <Button asChild variant="outline"><Link href="/admin">Tableau de bord</Link></Button>
+        </div>
+      </div>
+    )
+  }
   const sp = await searchParams
   const editSlug = typeof sp.edit === "string" ? sp.edit : undefined
 
@@ -34,7 +54,7 @@ async function SubmitContent({ searchParams }: Pick<PageProps<"/submit">, "searc
   let rejectionReason: string | undefined
   if (editSlug) {
     const ctx = await contextService.getForOwner(editSlug)
-    if (!ctx || (ctx.author.id !== user.id && user.role !== "admin")) notFound()
+    if (!ctx || ctx.author.id !== user.id) notFound()
     rejectionReason = ctx.status === "rejected" ? ctx.rejectionReason : undefined
     initial = {
       title: ctx.title,

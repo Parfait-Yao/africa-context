@@ -59,6 +59,16 @@ export const usersService = {
 
   findById: (id: string) => prisma.user.findUnique({ where: { id } }),
 
+  /**
+   * Connexion OAuth d'un compte suspendu ? Recherche par identifiant du fournisseur, et par email :
+   * ce dernier ne sert qu'à refuser (jamais à accorder), un email non vérifié ne pose donc pas de risque.
+   */
+  async isSuspendedOAuth(provider: "github" | "google", providerAccountId: string, email?: string | null) {
+    const or = [provider === "github" ? { githubId: providerAccountId } : { googleId: providerAccountId }, ...(email ? [{ email: email.toLowerCase() }] : [])]
+    const suspended = await prisma.user.findFirst({ where: { OR: or, suspendedAt: { not: null } }, select: { id: true } })
+    return Boolean(suspended)
+  },
+
   async recomputeReputation(userId: string) {
     const [approved, up, down] = await Promise.all([
       prisma.context.count({ where: { authorId: userId, status: { in: ["approved", "to_recheck"] } } }),

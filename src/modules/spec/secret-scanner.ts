@@ -59,7 +59,19 @@ export function scanForSecrets(text: string): SecretFinding[] {
   return findings
 }
 
-function maskSecret(value: string) {
+/**
+ * Remplace chaque secret détecté par sa forme masquée. Sert avant tout stockage de texte libre
+ * (notes d'administration, journal d'audit) : la valeur complète n'est jamais conservée.
+ */
+export function redactSecrets(text: string) {
+  let out = text
+  for (const rule of RULES) {
+    out = out.replace(new RegExp(rule.pattern.source, rule.pattern.flags), (m) => maskSecret(m))
+  }
+  return out
+}
+
+export function maskSecret(value: string) {
   if (value.length <= 8) return "••••"
   return `${value.slice(0, 6)}…${"•".repeat(4)}`
 }

@@ -40,6 +40,31 @@ enum ReportStatus {
   dismissed
 }
 
+enum AuditOutcome {
+  success
+  refused
+  error
+}
+
+enum AlertKind {
+  secret
+  suspicious_url
+  malformed_content
+}
+
+enum AlertSeverity {
+  high
+  medium
+  low
+}
+
+enum AlertStatus {
+  open
+  acknowledged
+  resolved
+  false_positive
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String
@@ -51,12 +76,17 @@ model User {
   image           String?
   reputationScore Int       @default(0)
   role            Role      @default(user)
+  // Compte suspendu par un administrateur : connexion et actions refusées
+  suspendedAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   contexts       Context[]
   votes          Vote[]
-  reports        Report[]
+  reports        Report[] @relation("ReportAuthor")
+  resolvedReports Report[] @relation("ReportResolver")
+  resolvedAlerts  SecurityAlert[]
+  validationFailures ValidationFailure[]
   moderationLogs ModerationLog[]
   accounts Account[]
   sessions Session[]
@@ -77,6 +107,9 @@ model Context {
   sourceHash     String?       // empreinte de la doc source (veille F12)
   sourceCheckedAt     DateTime?
   sourceCheckFailures Int       @default(0)
+  // Résultat du dernier contrôle : baseline | unchanged | changed | unreachable
+  sourceCheckResult   String?
+  sourceCheckError    String?
   testedWith     String[]
   status          ContextStatus @default(pending)
   rejectionReason String?
@@ -96,6 +129,7 @@ model Context {
   reports  Report[]
   events   Event[]
   moderationLogs ModerationLog[]
+  securityAlerts SecurityAlert[]
 
   @@index([status])
   @@index([service])
@@ -152,9 +186,14 @@ model Proof {
   outputWithContext    String   @db.Text
   model                String
   sandboxResult        String?  // passed | failed
+  // Version d'API du contexte au moment de la capture, et vérifications de l'exécution sandbox
+  apiVersion           String?
+  sandboxReport        Json?
   createdAt            DateTime @default(now())
 
   context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
 }
 
 model Mock {
@@ -173,10 +212,14 @@ model Report {
   details   String?
   status     ReportStatus @default(open)
   resolvedAt DateTime?
+  // Trace de la décision : qui a traité le signalement, et pourquoi
+  resolvedById   String?
+  resolutionNote String?
   createdAt  DateTime     @default(now())
 
-  context Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  context    Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  user       User    @relation("ReportAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy User?   @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@index([status])
 }
@@ -207,6 +250,77 @@ model ModerationLog {
   admin   User    @relation(fields: [adminId], references: [id], onDelete: Restrict)
 
   @@index([contextId, createdAt])
+}
+
+// Journal d'audit des opérations sensibles. Append-only : un trigger PostgreSQL refuse UPDATE et DELETE.
+// Pas de clé étrangère : l'entrée survit à la suppression de l'acteur ou de la cible (nom recopié).
+model AuditLog {
+  id          String       @id @default(cuid())
+  actorId     String?
+  actorName   String
+  action      String
+  targetType  String
+  targetId    String?
+  targetLabel String?
+  outcome     AuditOutcome @default(success)
+  details     Json?
+  createdAt   DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([targetType, targetId])
+}
+
+// Alerte de sécurité détectée automatiquement dans un contenu enregistré. L'extrait est toujours expurgé.
+model SecurityAlert {
+  id             String        @id @default(cuid())
+  kind           AlertKind
+  severity       AlertSeverity
+  rule           String
+  label          String
+  contextId      String?
+  contextSlug    String
+  location       String
+  excerpt        String
+  // Empreinte stable (contexte + emplacement + règle) : une même détection n'est créée qu'une fois
+  fingerprint    String        @unique
+  status         AlertStatus   @default(open)
+  resolvedById   String?
+  resolutionNote String?
+  resolvedAt     DateTime?
+  firstSeenAt    DateTime      @default(now())
+  lastSeenAt     DateTime      @default(now())
+
+  context    Context? @relation(fields: [contextId], references: [id], onDelete: SetNull)
+  resolvedBy User?    @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, severity])
+  @@index([contextId])
+}
+
+// Soumission refusée par la validation (Spec, sections, secrets). Aucun contenu soumis n'est conservé.
+model ValidationFailure {
+  id              String   @id @default(cuid())
+  userId          String?
+  action          String   // submit | resubmit
+  slug            String?
+  fields          String[] // champs en erreur (noms uniquement)
+  missingSections Int      @default(0)
+  secretRules     String[] // identifiants des règles de secrets déclenchées
+  createdAt       DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
+
+// Paramètres de la plateforme modifiables depuis l'administration (registre typé : src/modules/settings).
+model PlatformSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
 }
 
 // --- Tables Auth.js (adapter Prisma) ---
