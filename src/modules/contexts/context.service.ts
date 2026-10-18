@@ -1,27 +1,55 @@
 import "server-only"
 import { prisma } from "@/lib/db"
 import { contextRepository as repo } from "./context.repository"
-import { renderContext, MINUTES_SAVED_PER_INSTALL } from "./context.formats"
+import { renderContext } from "./context.formats"
 import type { Context, ContextFilters, ContextStatus, ExportFormat } from "./context.types"
 import { checkSections, validateSubmission } from "@/modules/spec/spec.schema"
 import { scanForSecrets } from "@/modules/spec/secret-scanner"
 import { usersService } from "@/modules/users/users.service"
+import { settingsService } from "@/modules/settings/settings.service"
+import { securityService } from "@/modules/security/security.service"
 
 /**
  * Service métier "Contexts" : point d'entrée unique pour les pages, les routes API et les scripts.
  * Toutes les règles métier vivent ici, pas dans les composants.
  */
 
-/** Transitions de modération autorisées. Toute autre transition est refusée (409). */
+/**
+ * Transitions de modération autorisées. Toute autre transition est refusée (409).
+ * `approved → rejected` = dépublication (motif obligatoire) ; un contexte rejeté ne revient
+ * qu'en `pending`, par une correction de son auteur.
+ */
 export const MODERATION_TRANSITIONS: Record<ContextStatus, ContextStatus[]> = {
   pending: ["approved", "rejected"],
-  approved: ["to_recheck"],
+  approved: ["to_recheck", "rejected"],
   to_recheck: ["approved", "rejected"],
   rejected: [],
 }
 
 export { HttpError as BusinessError } from "@/lib/errors"
 import { HttpError as BusinessError } from "@/lib/errors"
+
+/** Analyse de sécurité après une contribution acceptée : ne bloque jamais la soumission si elle échoue. */
+async function scanAfterSubmit(contextId: string) {
+  try {
+    if (await settingsService.get("security.scanOnSubmit")) await securityService.scanContext(contextId)
+  } catch (e) {
+    console.error("[security] analyse après soumission impossible", e instanceof Error ? e.message : e)
+  }
+}
+
+const slugOf = (input: unknown) => (typeof (input as { slug?: unknown })?.slug === "string" ? (input as { slug: string }).slug : null)
+
+/**
+ * Séparation des rôles : un administrateur contrôle, vérifie et valide les contributions,
+ * il n'en publie pas et ne réécrit pas celles des autres (rôle relu en base, pas dans la session).
+ */
+async function assertNotAdmin(userId: string) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+  if (u?.role === "admin") {
+    throw new BusinessError(403, "Les administrateurs vérifient et valident les contextes : ils n'en publient pas et ne modifient pas ceux des contributeurs.")
+  }
+}
 
 export const contextService = {
   list: (filters: ContextFilters) => repo.list(filters),
@@ -56,8 +84,12 @@ export const contextService = {
 
   /** Soumission : validation Spec + scan de secrets côté serveur, puis statut `pending`. */
   async submit(input: unknown, authorId: string) {
+    await assertNotAdmin(authorId)
     const { data, ...report } = validateSubmission(input)
-    if (!report.valid || !data) return { ok: false as const, report }
+    if (!report.valid || !data) {
+      await securityService.recordValidationFailure(authorId, "submit", slugOf(input), report)
+      return { ok: false as const, report }
+    }
 
     const existing = await repo.findRawBySlug(data.slug)
     if (existing) {
@@ -67,6 +99,7 @@ export const contextService = {
       }
     }
     const context = await repo.create(data, authorId)
+    await scanAfterSubmit(context.id)
     return { ok: true as const, context }
   },
 
@@ -74,12 +107,27 @@ export const contextService = {
   async resubmit(slug: string, input: unknown, user: { id: string; role: string }) {
     const existing = await repo.findRawBySlug(slug)
     if (!existing) throw new BusinessError(404, "Contexte introuvable.")
-    if (existing.authorId !== user.id && user.role !== "admin") throw new BusinessError(403, "Seul l'auteur peut modifier ce contexte.")
+    await assertNotAdmin(user.id)
+    if (existing.authorId !== user.id) throw new BusinessError(403, "Seul l'auteur peut modifier ce contexte.")
 
     const { data, ...report } = validateSubmission({ ...(input as object), slug })
-    if (!report.valid || !data) return { ok: false as const, report }
+    if (!report.valid || !data) {
+      await securityService.recordValidationFailure(user.id, "resubmit", slug, report)
+      return { ok: false as const, report }
+    }
     const context = await repo.update(slug, data, "Correction après relecture")
+    await scanAfterSubmit(context!.id)
     return { ok: true as const, context: context! }
+  },
+
+  /** Suppression par l'auteur (ou un admin). Définitive : la réputation de l'auteur est recalculée. */
+  async remove(slug: string, user: { id: string; role: string }) {
+    const existing = await repo.findRawBySlug(slug)
+    if (!existing) throw new BusinessError(404, "Contexte introuvable.")
+    if (existing.authorId !== user.id && user.role !== "admin") throw new BusinessError(403, "Seul l'auteur peut supprimer ce contexte.")
+    await repo.remove(existing.id)
+    await usersService.recomputeReputation(existing.authorId)
+    return { slug }
   },
 
   /** Modération (admin) : transitions contrôlées + journal + réputation de l'auteur. */
@@ -126,9 +174,12 @@ export const contextService = {
       include: { context: { select: { slug: true, title: true } }, admin: { select: { name: true } } },
     }),
 
-  /** Compteurs d'impact globaux (F16). */
+  /**
+   * Compteurs d'impact globaux (F16). `hoursSaved` est une estimation :
+   * (copies + installations) × minutes supposées par usage (paramètre impact.minutesSavedPerUse).
+   */
   async impact() {
-    const i = await repo.impact()
-    return { ...i, hoursSaved: Math.round(((i.copies + i.installs) * MINUTES_SAVED_PER_INSTALL) / 60) }
+    const [i, minutesPerUse] = await Promise.all([repo.impact(), settingsService.get("impact.minutesSavedPerUse")])
+    return { ...i, minutesPerUse, hoursSaved: Math.round(((i.copies + i.installs) * minutesPerUse) / 60) }
   },
 }

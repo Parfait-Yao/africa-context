@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { CheckCircle2Icon, CircleIcon, ClockIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react"
+import { CheckCircle2Icon, CircleIcon, ClockIcon, EyeIcon, PencilIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,8 @@ import { REQUIRED_SECTIONS, SPEC_BODY_TEMPLATE, checkSections, specFrontmatterSc
 import { scanForSecrets } from "@/modules/spec/secret-scanner"
 import { slugify } from "@/components/contexts/markdown"
 import { cn } from "@/lib/utils"
+import { SubmissionReview } from "./submission-review"
+import { DeleteContextButton } from "./delete-context-button"
 
 /** Schéma du formulaire : identique à la Spec, sauf les tags saisis en texte. */
 const formSchema = specFrontmatterSchema.omit({ tags: true, tested_with: true }).extend({
@@ -40,8 +42,8 @@ const TYPE_HELP: Record<(typeof CONTEXT_TYPES)[number], string> = {
 export type SubmitFormValues = FormValues
 
 /**
- * Formulaire de soumission. Avec `editSlug`, il corrige un contexte existant
- * (PUT, nouvelle version, retour en attente de validation).
+ * Formulaire de soumission en deux temps : saisie, puis relecture complète avant l'envoi.
+ * Avec `editSlug`, il corrige un contexte existant (PUT, nouvelle version, retour en attente de validation).
  */
 export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = false }: { initial?: Partial<FormValues>; editSlug?: string; rejectionReason?: string; aiEnabled?: boolean }) {
   const [draftUrl, setDraftUrl] = React.useState("")
@@ -49,7 +51,9 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
   const [slugTouched, setSlugTouched] = React.useState(Boolean(editSlug))
   const fileRef = React.useRef<HTMLInputElement>(null)
   const router = useRouter()
-  const [submitted, setSubmitted] = React.useState<string | null>(null)
+  const [submitted, setSubmitted] = React.useState<{ slug: string; title: string } | null>(null)
+  const [reviewing, setReviewing] = React.useState<FormValues | null>(null)
+  const [sending, setSending] = React.useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -82,19 +86,44 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
   const sections = React.useMemo(() => checkSections(content ?? ""), [content])
   const secrets = React.useMemo(() => scanForSecrets(Object.values(all ?? {}).flat().join("\n")), [all])
 
-  async function onSubmit(values: FormValues) {
+  const tagsOf = (input: string) => input.split(",").map((t) => slugify(t)).filter(Boolean)
+
+  /** Étape 1 → 2 : champs valides, on affiche le récapitulatif au lieu d'envoyer. */
+  function onReview(values: FormValues) {
     if (secrets.length > 0) {
       toast.error("Retirez le secret détecté avant de publier.")
       return
     }
-    const { tagsInput, ...rest } = values
-    const payload = { ...rest, tags: tagsInput.split(",").map((t) => slugify(t)).filter(Boolean) }
+    setReviewing(values)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
 
+  /** Retour au formulaire ; avec `field`, on se place directement sur le champ à corriger. */
+  function backToForm(field?: keyof FormValues) {
+    setReviewing(null)
+    if (!field) {
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-field="${field}"]`) ?? document.getElementById(field)
+      el?.scrollIntoView({ behavior: "smooth", block: "center" })
+      const target = el?.matches("input, textarea, select") ? el : el?.querySelector<HTMLElement>("input, textarea, select, button")
+      target?.focus({ preventScroll: true })
+    })
+  }
+
+  async function onSubmit(values: FormValues) {
+    const { tagsInput, ...rest } = values
+    const payload = { ...rest, tags: tagsOf(tagsInput) }
+
+    setSending(true)
     const res = await fetch(editSlug ? `/api/contexts/${editSlug}` : "/api/contexts", {
       method: editSlug ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).catch(() => null)
+    setSending(false)
 
     if (!res) return toast.error("Le serveur ne répond pas. Vérifiez votre connexion et réessayez.")
     const json = await res.json()
@@ -103,10 +132,13 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
       return
     }
     if (res.status === 201 || (editSlug && res.ok)) {
-      setSubmitted(json.data.slug)
+      setSubmitted({ slug: json.data.slug, title: values.title })
+      setReviewing(null)
       toast.success("Contexte soumis : en attente de validation")
       return
     }
+    // Refus du serveur : retour au formulaire avec les champs en erreur
+    setReviewing(null)
     const fieldErrors = (json.error?.details?.fieldErrors ?? {}) as Record<string, string[]>
     Object.entries(fieldErrors).forEach(([k, msgs]) => setError(k as keyof FormValues, { message: msgs[0] }))
     toast.error(json.error?.message ?? "La soumission a été refusée.")
@@ -118,12 +150,16 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
         <ClockIcon className="size-8 text-primary" />
         <h2 className="mt-4 text-2xl font-bold">Contexte soumis, en attente de validation</h2>
         <p className="mt-2 max-w-lg text-muted-foreground">
-          Un administrateur va relire <code className="font-mono text-foreground">{submitted}</code> sur la documentation officielle.
-          Il apparaîtra dans le catalogue dès qu'il sera approuvé.
+          Un administrateur va relire <code className="font-mono text-foreground">{submitted.slug}</code> sur la documentation officielle.
+          Il apparaîtra dans le catalogue dès qu'il sera approuvé. D'ici là, vous pouvez encore le modifier ou le supprimer.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button asChild><Link href="/dashboard">Voir mes contributions</Link></Button>
-          <Button variant="outline" onClick={() => { form.reset(); setSubmitted(null); setSlugTouched(false) }}>Soumettre un autre contexte</Button>
+          <Button asChild variant="outline">
+            <Link href={`/submit?edit=${submitted.slug}`}><PencilIcon /> Modifier</Link>
+          </Button>
+          <DeleteContextButton slug={submitted.slug} title={submitted.title} redirectTo="/dashboard" size="default" />
+          <Button variant="ghost" onClick={() => { form.reset(); setSubmitted(null); setSlugTouched(false) }}>Soumettre un autre contexte</Button>
         </div>
       </div>
     )
@@ -179,7 +215,19 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
   const specOk = sections.missing.length === 0
 
   return (
-    <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <>
+    {reviewing && (
+      <SubmissionReview
+        values={reviewing}
+        tags={tagsOf(reviewing.tagsInput)}
+        isEdit={Boolean(editSlug)}
+        submitting={sending}
+        onEdit={backToForm}
+        onConfirm={() => onSubmit(reviewing)}
+      />
+    )}
+    {/* Le formulaire reste monté pendant la relecture : aucune saisie n'est perdue */}
+    <form onSubmit={handleSubmit(onReview, onInvalid)} noValidate hidden={Boolean(reviewing)} className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0 space-y-10">
         {rejectionReason && (
           <div role="alert" className="rounded-xl border border-destructive/30 bg-danger-soft p-4 text-sm text-destructive">
@@ -232,7 +280,7 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
           </FieldGroup>
         </FieldSet>
 
-        <FieldSet>
+        <FieldSet data-field="type">
           <FieldLegend>Format</FieldLegend>
           <Controller
             control={control}
@@ -283,7 +331,7 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
               control={control}
               name="pays"
               render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
+                <Field data-invalid={!!fieldState.error} data-field="pays">
                   <FieldTitle>Pays couverts</FieldTitle>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {COUNTRIES.map((c) => (
@@ -304,7 +352,7 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
               control={control}
               name="tested_with"
               render={({ field }) => (
-                <Field>
+                <Field data-field="tested_with">
                   <FieldTitle>Testé avec</FieldTitle>
                   <div className="flex flex-wrap gap-x-5 gap-y-2">
                     {AI_TOOLS.map((t) => (
@@ -381,11 +429,21 @@ export function SubmitForm({ initial, editSlug, rejectionReason, aiEnabled = fal
           )}
         </div>
 
-        <Button type="submit" size="lg" className="w-full" disabled={formState.isSubmitting}>
-          {formState.isSubmitting ? "Envoi…" : editSlug ? "Resoumettre pour validation" : "Soumettre pour validation"}
+        <Button type="submit" size="lg" className="w-full">
+          <EyeIcon /> {editSlug ? "Relire avant de resoumettre" : "Relire avant de publier"}
         </Button>
-        <p className="text-xs text-muted-foreground">Le contexte est publié après relecture par un administrateur. Le serveur refait toutes ces vérifications.</p>
+        <p className="text-xs text-muted-foreground">
+          Vous verrez tout ce que vous avez saisi avant l'envoi. Le contexte est publié après relecture par un administrateur.
+        </p>
+        {editSlug && (
+          <div className="space-y-2 rounded-xl border border-destructive/30 p-4">
+            <p className="text-sm font-semibold">Supprimer ce contexte</p>
+            <p className="text-xs text-muted-foreground">Définitif : versions, votes et statistiques compris.</p>
+            <DeleteContextButton slug={editSlug} title={all.title || editSlug} redirectTo="/dashboard" variant="outline" label="Supprimer le contexte" />
+          </div>
+        )}
       </aside>
     </form>
+    </>
   )
 }

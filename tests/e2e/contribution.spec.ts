@@ -11,7 +11,7 @@ test.describe.serial("contribution → modération → publication", () => {
     await page.getByLabel("Service").fill("TestPay")
     await page.getByLabel("Description courte").fill("Contexte créé par le test de bout en bout. Clé : sk_live_51HxYzAbCdEfGhIjKl")
     await expect(page.getByText(/secrets? détectés?/)).toBeVisible()
-    await page.getByRole("button", { name: "Soumettre pour validation" }).click()
+    await page.getByRole("button", { name: "Relire avant de publier" }).click()
     await expect(page.getByText("Retirez le secret détecté avant de publier.")).toBeVisible()
   })
 
@@ -25,7 +25,9 @@ test.describe.serial("contribution → modération → publication", () => {
     await page.getByLabel("Catégorie").selectOption("paiement-mobile")
     await page.getByText("Sénégal", { exact: true }).click()
     await expect(page.getByText("8/8")).toBeVisible()
-    await page.getByRole("button", { name: "Soumettre pour validation" }).click()
+    // Étape de relecture avant l'envoi (ajoutée avec l'espace d'administration)
+    await page.getByRole("button", { name: "Relire avant de publier" }).click()
+    await page.getByRole("button", { name: "Confirmer et publier" }).click()
     await expect(page.getByRole("heading", { name: "Contexte soumis, en attente de validation" })).toBeVisible()
     const res = await page.request.get(`/api/contexts/${slug}`)
     expect(res.status()).toBe(200) // visible par son auteur
@@ -35,7 +37,7 @@ test.describe.serial("contribution → modération → publication", () => {
     const anon = await browser.newContext()
     expect((await anon.request.get(`/api/contexts/${slug}`)).status()).toBe(404)
 
-    await login(page, "admin", "/admin")
+    await login(page, "admin", "/admin/moderation")
     const row = page.getByRole("row", { name: /Test E2E — paiement/ })
     await row.getByRole("button", { name: "Relire" }).click()
     await expect(page.getByText("Aucun secret détecté")).toBeVisible()
@@ -45,7 +47,8 @@ test.describe.serial("contribution → modération → publication", () => {
     expect((await anon.request.get(`/api/contexts/${slug}`)).status()).toBe(200)
     const anonPage = await anon.newPage()
     await anonPage.goto("/contexts?q=testpay")
-    await expect(anonPage.getByRole("link", { name: "Test E2E — paiement" })).toBeVisible()
+    // Le titre n'est pas unique (exécutions précédentes) : on cible le lien de ce contexte
+    await expect(anonPage.locator(`a[href="/contexts/${slug}"]`).first()).toBeVisible()
     await anon.close()
   })
 

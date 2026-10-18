@@ -23,6 +23,7 @@ import { contextService } from "@/modules/contexts/context.service"
 import { getSession } from "@/modules/auth/session"
 import { FORMAT_META, renderContext, targetFileName } from "@/modules/contexts/context.formats"
 import { EXPORT_FORMATS } from "@/modules/contexts/context.types"
+import { extractEnvVars } from "@/modules/contexts/install-plan"
 import { CONTEXT_TYPE_LABELS, TOOL_LABELS, categoryLabel, countryName } from "@/config/site"
 import { formatDate, formatNumber } from "@/lib/format"
 
@@ -130,8 +131,11 @@ async function ContextDetail({ params }: Pick<PageProps<"/contexts/[slug]">, "pa
             <TabsContent value="install" className="mt-6 space-y-8">
               <section>
                 <h2 className="text-lg font-semibold">En une commande</h2>
-                <p className="mt-1 mb-4 text-sm text-muted-foreground">À lancer à la racine de votre projet. La CLI ne remplace jamais un fichier sans votre accord.</p>
-                <InstallCommand slug={ctx.slug} showFormats />
+                <p className="mt-1 mb-4 text-sm text-muted-foreground">
+                  Choisissez votre environnement, copiez la commande et lancez-la dans votre projet : tout ce dont votre agent a besoin est installé.
+                  Votre framework est détecté automatiquement, et aucun fichier n'est remplacé sans votre accord.
+                </p>
+                <InstallCommand slug={ctx.slug} showFormats envVars={extractEnvVars(ctx.content).map((v) => v.name)} />
               </section>
               <section>
                 <h2 className="text-lg font-semibold">Exports par outil</h2>

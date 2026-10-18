@@ -65,6 +65,3 @@ export function renderContext(ctx: Context, format: ExportFormat): string {
       ].join("\n")
   }
 }
-
-/** Temps gagné estimé (F16) : hypothèse de 25 minutes par installation, affichée comme telle. */
-export const MINUTES_SAVED_PER_INSTALL = 25

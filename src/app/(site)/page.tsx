@@ -299,7 +299,7 @@ async function HomeContent() {
               </div>
             ))}
           </dl>
-          <p className="mt-4 text-center text-xs text-code-fg/45">Estimation : 25 minutes économisées par copie ou installation.</p>
+          <p className="mt-4 text-center text-xs text-code-fg/45">Estimation : {impact.minutesPerUse} minutes économisées par copie ou installation.</p>
 
           {/* Appel à contribution : bordure en dégradé */}
           <div className="reveal bg-brand-gradient mt-14 rounded-3xl p-px shadow-2xl shadow-brand-blue/20">

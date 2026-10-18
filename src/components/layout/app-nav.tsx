@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils"
 
 const items = [
   { href: "/dashboard", label: "Mes contributions", Icon: FileStackIcon },
-  { href: "/submit", label: "Publier un contexte", Icon: PlusIcon },
-  { href: "/admin", label: "Modération", Icon: ShieldCheckIcon, admin: true },
+  // Les administrateurs vérifient et valident : ils ne publient pas
+  { href: "/submit", label: "Publier un contexte", Icon: PlusIcon, contributorOnly: true },
+  { href: "/admin", label: "Administration", Icon: ShieldCheckIcon, admin: true },
 ]
 
 export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
@@ -16,7 +17,7 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
   return (
     <nav aria-label="Espace connecté" className="-mx-4 overflow-x-auto px-4 lg:sticky lg:top-24 lg:mx-0 lg:self-start lg:overflow-visible lg:px-0">
       <ul className="flex gap-1 lg:flex-col">
-        {items.filter((i) => !i.admin || isAdmin).map(({ href, label, Icon, admin }) => {
+        {items.filter((i) => (!i.admin || isAdmin) && !(i.contributorOnly && isAdmin)).map(({ href, label, Icon, admin }) => {
           const active = pathname.startsWith(href)
           return (
             <li key={href}>

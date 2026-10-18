@@ -15,6 +15,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "../src/generated/prisma/client"
+import { redactSecrets } from "../src/modules/spec/secret-scanner"
 
 const [slug, prompt, ...rest] = process.argv.slice(2)
 const sandboxIdx = rest.indexOf("--sandbox")
@@ -65,19 +66,33 @@ async function main() {
   const withCtx = extractCode(await ask(`${base}\n\nContexte vérifié à respecter :\n${ctx.contentPayload}`, prompt))
 
   let sandboxResult: "passed" | "failed" | undefined
+  let sandboxReport: { scenario: string; checks: { name: string; ok: boolean; detail?: string }[] } | undefined
   if (scenario) {
     const dir = mkdtempSync(join(tmpdir(), "ac-proof-"))
     const file = join(dir, "generated.ts")
     writeFileSync(file, withCtx)
+    // Sortie JSON du runner : les vérifications détaillées sont conservées avec la preuve
+    let out = ""
     try {
-      execFileSync(process.execPath, ["sandbox/run.mjs", file, "--scenario", scenario], { stdio: "inherit" })
+      out = execFileSync(process.execPath, ["sandbox/run.mjs", file, "--scenario", scenario, "--json"], { encoding: "utf8" })
       sandboxResult = "passed"
-    } catch {
+    } catch (e) {
+      out = String((e as { stdout?: string }).stdout ?? "")
       sandboxResult = "failed"
     }
+    try {
+      const report = JSON.parse(out) as { checks?: { name: string; ok: boolean; detail?: string }[] }
+      sandboxReport = {
+        scenario,
+        checks: (report.checks ?? []).slice(0, 30).map((c) => ({ name: String(c.name), ok: Boolean(c.ok), detail: c.detail ? redactSecrets(String(c.detail)).slice(0, 300) : undefined })),
+      }
+    } catch {
+      sandboxReport = { scenario, checks: [{ name: "Exécution", ok: false, detail: "Rapport du runner illisible." }] }
+    }
+    for (const c of sandboxReport.checks) console.log(`  ${c.ok ? "✔" : "✖"} ${c.name}${c.detail ? ` — ${c.detail}` : ""}`)
   }
   const proof = await prisma.proof.create({
-    data: { contextId: ctx.id, prompt, outputWithoutContext: without, outputWithContext: withCtx, model, sandboxResult },
+    data: { contextId: ctx.id, prompt, outputWithoutContext: without, outputWithContext: withCtx, model, sandboxResult, sandboxReport, apiVersion: ctx.apiVersion },
   })
   console.log(`✔ Preuve ${proof.id} enregistrée sur ${slug}${sandboxResult ? ` (sandbox : ${sandboxResult})` : ""}`)
 }

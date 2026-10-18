@@ -217,6 +217,11 @@ export const contextRepository = {
     return (await hydrate([row]))[0]
   },
 
+  /** Suppression définitive ; versions, votes, preuves, événements et signalements suivent (cascade). */
+  async remove(id: string) {
+    await prisma.context.delete({ where: { id } })
+  },
+
   async setStatus(id: string, data: { status: ContextStatus; rejectionReason?: string | null; lastVerifiedAt?: Date }) {
     return prisma.context.update({ where: { id }, data })
   },
